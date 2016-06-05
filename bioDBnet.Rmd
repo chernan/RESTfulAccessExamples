@@ -1,0 +1,727 @@
+---
+title: "bioDBnet"
+author: "Celine Hernandez"
+date: "5 Jun 2016"
+output: 
+  html_document: 
+    toc: yes
+---
+
+# Introduction
+
+The bioDBnet database is a set of services similar to the Biomart service and aiming at converting identifiers or retrieving information about them. 
+
+Description from the website:
+> biological DataBase network is an application integrating a vast number of biological databases including Gene, UniProt, Ensembl, GO, Affy, RefSeq etc. The databases are created by downloading data from various public resources. They are formatted and maintained in a relational structure at the Advanced Biomedical Computing Center (ABCC).
+
+# bioDBnet API
+
+## Services available
+
+bioDBnet provides access seven services as well as supporting tools.
+
+List of sevices provided by bioDBnet  
+* db2db handles all the conversions from one database identifier to another.  
+* dbWalk lets you walk through your own bioDBnet path.  
+* dbReport reports every possible information that it can get for a particular identifier.  
+* dbFind finds the type of identifiers and converts all into a chosen database identifier type  
+* dbOrtho converts identifiers from one organism into homolog identifiers of a different organism  
+* dbAnnot provides different types of annotations for various biological identifiers  
+* dbOrg provides downloadable files of organism wide conversions  
+
+List of the supporting analysis tools  
+* orgTaxon for finding the taxon ID of an organism  
+* goTree to look at the parents of any go accession  
+* chrView for visualising data on chromosomes  
+* bioTaxon for finding genes, proteins or GO accessions based on search terms  
+
+The base URL for all services is as follows:  
+
+```{r base_url}
+base_url <- "https://biodbnet-abcc.ncifcrf.gov/webServices/rest.php/"
+```
+
+Depending on the desired output format we will either contact "biodbnetRestApi.json" (JSON) or "biodbnetRestApi" (XML).  
+
+```{r}
+# Base URL returning data in JSON
+json_url <- paste0(base_url, "biodbnetRestApi.json?")
+
+# Base URL returning data in XML
+xml_url <- paste0(base_url, "biodbnetRestApi?")
+```
+
+
+
+## Access using R
+
+bioDBnet provides RESTful access to its services but no wrapper is available in an R library. It's then necessary to use a generic access through the RCurl library, jointly with the RJSONIO or XML libraries to read the returned information.
+
+RCurl: https://cran.r-project.org/web/packages/RCurl/index.html  
+RJSONIO: https://cran.r-project.org/web/packages/RJSONIO/index.html  
+XML: https://cran.r-project.org/web/packages/XML/index.html  
+
+```{r install_libraries, eval=FALSE}
+# Not run
+
+# Generic library used to 
+install.packages("RCurl")
+
+# If we want to access the information in JSON format
+install.packages("RJSONIO")
+# If we want to access the information in XML format
+install.packages("XML")
+
+```
+
+Once installed, we can load the libraries and use them in the examples.
+
+```{r load_libraries}
+library('RCurl')
+library('RJSONIO')
+library('XML')
+```
+
+To use RCurl more easily, we can define a generic function requesting a provided URL given a list() of parameters and returning the service's response.
+
+```{r rcurl_request}
+rcurl_request <- function(service_url, parameters) {
+    
+    # Collapse all parameters into one string
+    all_parameters <- paste(
+        sapply(names(parameters), 
+               FUN=function(param_name, parameters) {
+                   paste(param_name, paste(parameters[[param_name]], collapse=','), collapse='', sep='=')
+               }, 
+               parameters),
+        collapse="&")
+    
+    # Paste base URL and parameters
+    requested_url <- paste0(service_url, all_parameters)
+    
+    # Encode URL (in case there would be any space character for instance)
+    requested_url <- URLencode(requested_url)
+    
+    # Start request to service
+    response <- getURL(requested_url, .opts = list(ssl.verifypeer = FALSE))
+    
+    return(response)
+}
+
+```
+
+# Examples
+
+
+## Main bioDBnet tools
+
+
+### db2db (conversion to one)
+
+The "db2db" tool aims at converting a set of identifiers from a specific type to another type available in bioDBnet. 
+
+Parameters for the method "db2db":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+input | Format of the inputValues.  
+outputs | Desired converted output formats.  
+taxonId | Taxon identifier of the coresponding species.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r db2db_data}
+parameters <- list(method="db2db", 
+                   inputValues=c("Lat", "Lck"),
+                   input="genesymbol",
+                   outputs=c("uniprotaccession", "affyid"),
+                   taxonId="10090",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r db2db_json}
+db2db_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(db2db_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r db2db_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+db2db_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = db2db_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+
+### dbReport (conversion to all)
+
+The "dbreport" tool aims at converting a set of identifiers from a specific type to all available ressources in bioDBnet. 
+
+Parameters for the method "dbreport":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+input | Format of the inputValues.  
+taxonId | Taxon identifier of the coresponding species.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r dbreport_data}
+parameters <- list(method="dbreport", 
+                   inputValues=c("Zap70"),
+                   input="genesymbol",
+                   taxonId="10090",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r dbreport_json, eval=FALSE}
+# Note that this code is not evaluated because the request is very slow.
+dbreport_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(dbreport_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r dbreport_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+dbreport_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = dbreportd_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+### dbWalk (multiple successive conversions)
+
+The "dbwalk" tool aims at linking successive conversions together. See the bioDBnet graph for more information: https://biodbnet-abcc.ncifcrf.gov/dbInfo/netGraph.php
+
+Parameters for the method "dbwalk":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+input | Format of the inputValues. (optional?) 
+dbPath | Path from one identifer type to another.
+taxonId | Taxon identifier of the coresponding species.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r dbwalk_data}
+parameters <- list(method="dbwalk",  
+                   inputValues=c("Lat", "Lck"),
+                   input="genesymbol",
+                   dbPath="genesymbol->geneid->affyid",
+                   taxonId="10090",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r dbwalk_json}
+dbwalk_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(dbwalk_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r dbwalk_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+dbwalk_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = dbwalk_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+
+### dbFind (identifiers from unknown or multiple types)
+
+The "dbfind" tool aims at converting identifiers from multiple and often unknown sources into a unique database type.  
+
+Parameters for the method "dbfind":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+output | Desired conversion. One of "ensemblgeneid" (Ensembl Gene ID), "geneid" (Gene ID), "uniprotaccession" (UniProt Accession ID), "genesymbol" (Gene Symbol).
+taxonId | Taxon identifier of the coresponding species.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r dbfind_data}
+parameters <- list(method="dbfind", 
+                   inputValues=c("LAT", "Lck", "Zap70"),
+                   output="ensemblgeneid",
+                   taxonId="10090",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r dbfind_json}
+dbfind_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(dbfind_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r dbfind_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+dbfind_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = dbfind_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+
+
+### dbortho (conversion to a different organism)
+
+
+The "dbortho" tool aims at converting a set of identifiers from a specific organism to another organism. 
+
+Parameters for the method "dbortho":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+input | Format of the inputValues.  
+inputTaxon | Taxon of the inputValues.
+output | Desired output formats.  
+outputTaxon | Taxon identifier of output values.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r dbortho_data}
+parameters <- list(method="dbortho", 
+                   inputValues=c("Lat", "Lck"),
+                   input="genesymbol",
+                   inputTaxon="10090",
+                   output="uniprotaccession",
+                   outputTaxon="9606",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r dbortho_json}
+dbortho_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(dbortho_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r dbortho_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+dbortho_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = dbortho_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+
+### dbannot (gather annotations)
+
+The "dbannot" tool aims at gathering information linked to given identifiers. 
+
+Parameters for the method "dbannot":  
+
+Parameter | Value
+--- | ---
+inputValues | A set of identifiers.
+input | Format of the inputValues.  
+annotations | Desired type of information. One of "Genes", "Drugs", "Diseases", "GO Terms", "Pathways" and "Protein Interactors".  
+taxonId | Taxon identifier of the coresponding species.
+format | Either "row" or "col" depending on the desired resulting table orientation. Not specifying the format results in a more complex JSON output containing also the input parameters.
+
+
+```{r dbannot_data}
+parameters <- list(method="dbannot", 
+                   inputValues=c("Lat", "Lck"),
+                   input="genesymbol",
+                   annotations=c("Protein Interactors"),
+                   taxonId="10090",
+                   format="col")
+```
+
+Request result as JSON.
+
+```{r dbannot_json, eval=FALSE}
+dbannot_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(dbannot_result)
+json_result <- sapply(json_result, 
+                      FUN=function(x) {
+                          x[sapply(x, is.null)] <- NA
+                        unlist(x)
+                    })
+
+# Display result
+print(paste0("Categories : ", paste0(sapply(fromJSON(dbannot_result), names), sep=",", collapse=" ")))
+print(json_result)
+```
+
+
+Request result as XML.  
+
+
+```{r dbannot_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+dbannot_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = dbannot_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+
+### dborg (organism-wide downloads)
+
+
+The "dborg" tool aims at downloading organism-specific files converting one identifier type to another. This tool is not available as a RESTful service.
+
+
+
+
+
+
+
+
+
+## Other tools
+
+### getInputs
+
+Access all the input nodes in the bioDBnet graph.
+
+This tool doesn't accept any parameter apart from the method name.
+
+```{r getinputs_data}
+parameters <- list(method="getinputs")
+```
+
+Request result as JSON.
+
+```{r getinputs_json, eval=FALSE}
+getinputs_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(getinputs_result)
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+```{r getinputs_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+getinputs_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = getinputs_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+### getOutputsForInput (all possible conversion)
+
+From a given identifier type, "getOutputsForInput" gives all the possible conversions, being direct or indirect.
+
+Parameters for the method "getoutputsforinput":  
+
+Parameter | Value
+--- | ---
+input | Format of the identifier type.  
+
+
+```{r getoutputsforinput_data}
+parameters <- list(method="getoutputsforinput",
+                   input="genesymbol")
+```
+
+Request result as JSON.
+
+```{r getoutputsforinput_json, eval=FALSE}
+getoutputsforinput_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(getoutputsforinput_result)
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+```{r getoutputsforinput_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+getoutputsforinput_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = getoutputsforinput_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+### getDirectOutputsForInput (direct conversions)
+
+From a given identifier type, "getDirectOutputsForInput" gives all the possible direct conversions.
+
+Parameters for the method "getoutputsforinput":  
+
+Parameter | Value
+--- | ---
+input | Format of the identifier type.  
+directOutput | 1
+
+
+```{r getdirectoutputsforinput_data}
+parameters <- list(method="getdirectoutputsforinput",
+                   input="genesymbol",
+                   directOutput="1")
+```
+
+Request result as JSON.
+
+```{r getdirectoutputsforinput_json}
+getdirectoutputsforinput_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(getdirectoutputsforinput_result)
+
+# Display result
+print(json_result)
+```
+
+
+Request result as XML.  
+
+```{r getdirectoutputsforinput_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+getdirectoutputsforinput_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = getdirectoutputsforinput_result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+
+
+### getPathways (access pathways)
+
+Use "getpathways" to access all the possible pathways references of a given species in one or more databases.
+
+Parameters for the method "getpathways":  
+
+Parameter | Value
+--- | ---
+taxonId | Taxon identifier of the coresponding species.
+pathways | Either "1" to get all pathways or one of "ncipid", "kegg", "biocarta" or "reactome".
+
+
+```{r getpathways_data}
+parameters <- list(method="getpathways",
+                   taxonId="9606",
+                   pathways="reactome")
+```
+
+Request result as JSON.
+
+```{r getpathways_json}
+getpathways_result <- rcurl_request(json_url, parameters)
+
+# Parse result
+json_result <- fromJSON(getpathways_result)
+
+# Display result
+print(head(json_result, n=1))
+```
+
+
+Request result as XML.  
+
+```{r getpathways_xml, eval=FALSE}
+# Note that this code is not evaluated because there seems to be a problem with XML requests.
+
+getpathways_result <- rcurl_request(xml_url, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = getpathways_result, asText = TRUE)
+
+# Display result
+print(head(xml_result, n=1))
+```
+
+
+
+## Full list of allowed inputValues formats
+
+If not specified otherwise, these are the possible types available for input and output values.  
+
+Category | Value to use
+--- | ---
+Affy GeneChip Array | ?
+Affy ID | "affyid"
+Agilent ID | "agilentid"
+Biocarta Pathway Name | "biocartapathwayname"
+CodeLink ID | "codelinkid"
+dbSNP ID | "dbsnpid"
+DrugBank Drug ID | "drugbankdrugid"
+DrugBank Drug Name | "drugbankdrugname"
+EC Number | "ecnumber"
+Ensembl Gene ID | "ensemblgeneid"
+Ensembl Protein ID | "ensemblproteinid"
+Ensembl Transcript ID | "ensembltranscriptid"
+EST Accession | "estaccession"
+FlyBase Gene ID | "flybasegeneid"
+GenBank Nucleotide Accession | "genbanknucleotideaccession"
+GenBank Protein Accession | "genbankproteinaccession"
+Gene ID | "geneid"
+Gene Symbol | "genesymbol"
+Gene Symbol and Synonyms | "genesymbolandsynonyms"
+GI Number | "ginumber"
+GO ID | "goid"
+GSEA Standard Name | "gseastandardname"
+H-Inv Locus ID | "h-invlocusid"
+H-Inv Protein ID | "h-invproteinid"
+H-Inv Transcript ID | "h-invtranscriptid"
+HGNC ID | "hgncid"
+HMDB Metabolite | "hmdbmetabolite"
+HomoloGene ID | "homologeneid"
+Illumina ID | "illuminaid"
+InterPro ID | "interproid"
+IPI ID | "ipiid"
+KEGG Compound Name | "keggcompoundname"
+KEGG Disease ID | "keggdiseaseid"
+KEGG Drug ID | "keggdrugid"
+KEGG Drug Name | "keggdrugname"
+KEGG Gene ID | "kegggeneid"
+KEGG Pathway ID | "keggpathwayid"
+MGI ID | "mgiid"
+MIM ID | "mimid"
+miRBase ID | "mirbaseid"
+miRBase Mature miRNA Acc | "mirbasematuremirnaacc"
+NCIPID Pathway Name | "ncipidpathwayname"
+Organism Scientific Name | "organismscientificname"
+PDB ID | "pdbid"
+Pfam ID | "pfamid"
+PharmGKB ID | ?
+Reactome Pathway Name | "reactomepathwayname"
+RefSeq Genomic Accession | "refseqgenomicaccession"
+RefSeq mRNA Accession | "refseqmrnaaccession"
+RefSeq Protein Accession | "refseqproteinaccession"
+SGD ID | "sgdid"
+TAIR ID | "tairid"
+Taxon ID | "taxonid"
+UniGene ID | "unigeneid"
+UniProt Accession | "uniprotaccession"
+UniProt Entry Name | "uniprotentryname"
+UniProt Protein Name | "uniprotproteinname"
+UniSTS ID | "unistsid"
