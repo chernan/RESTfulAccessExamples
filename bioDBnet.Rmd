@@ -30,10 +30,10 @@ List of sevices provided by bioDBnet
 * dbOrg provides downloadable files of organism wide conversions  
 
 List of the supporting analysis tools  
-* orgTaxon for finding the taxon ID of an organism  
-* goTree to look at the parents of any go accession  
-* chrView for visualising data on chromosomes  
-* bioTaxon for finding genes, proteins or GO accessions based on search terms  
+* getInputs to get all available ressources  
+* getOutputsForInput to get all possible conversions (direct or indirect) 
+* getDirectOutputsForInput to get all direct conversions  
+* getPathways to access pathways of a given species  
 
 The base URL for all services is as follows:  
 
