@@ -728,3 +728,10 @@ UniProt Accession | "uniprotaccession"
 UniProt Entry Name | "uniprotentryname"
 UniProt Protein Name | "uniprotproteinname"
 UniSTS ID | "unistsid"
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
