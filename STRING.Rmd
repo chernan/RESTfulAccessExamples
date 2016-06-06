@@ -1,0 +1,268 @@
+---
+title: "STRING"
+author: "Celine Hernandez"
+date: "6 Jun 2016"
+output: 
+  html_document: 
+    toc: yes
+---
+
+http://www.bioconductor.org/packages/3.3/bioc/vignettes/STRINGdb/inst/doc/STRINGdb.pdf
+
+# Introduction
+
+The STRING database is available at http://string-db.org
+
+Description from the STRING website:
+> STRING is a database of known and predicted protein-protein interactions. The interactions include direct (physical) and indirect (functional) associations; they stem from computational prediction, from knowledge transfer between organisms, and from interactions aggregated from other (primary) databases.
+
+Remote access to the database can be achieved by either direct request to the API or by using the STRINGdb R library.
+
+
+# STRING API
+
+## Access using R
+
+When not using the STRINGdb R library, it's necessary to use a generic access to the RESTful API through the RCurl library. 
+
+RCurl: https://cran.r-project.org/web/packages/RCurl/index.html  
+
+```{r install_library_rcurl, eval=FALSE}
+# Not run
+
+# Generic library used to 
+install.packages("RCurl")
+```
+
+Once installed, we can load the library.
+
+```{r load_rcurl}
+library('RCurl')
+```
+
+To use RCurl more easily, we can define a generic function requesting a provided URL given a list() of parameters and returning the service's response.
+
+```{r rcurl_request}
+rcurl_request <- function(service_url, access, format, request, parameters) {
+    
+    # Collapse all parameters into one string
+    all_parameters <- paste(
+        sapply(names(parameters), 
+               FUN=function(param_name, parameters) {
+                   paste(param_name, paste(parameters[[param_name]], collapse='\n'), collapse='', sep='=')
+               }, 
+               parameters),
+        collapse="&")
+    
+    # Paste base URL and parameters
+    requested_url <- paste(paste(service_url, access, format, request, sep = "/"), all_parameters, sep="?")
+    
+    # Encode URL (in case there would be any space character for instance)
+    requested_url <- URLencode(requested_url)
+    
+    # Start request to service
+    response <- getURL(requested_url, .opts = list(ssl.verifypeer = FALSE))
+    
+    return(response)
+}
+```
+
+## General description of the API
+
+STRING API requests are based on a global synthax for the URL.
+
+> http://[database]/[access]/[format]/[request]?[parameter]=[value]
+
+See this image for the full detail of all combinations : http://string-db.org/help/images/api_format.png
+
+### [database]
+
+The STRING API provides two entry points (base URLs) to STRING as well as one access to another sister database called STITCH (chemical-protein interactions).
+
+Database | Description
+--- | ---
+http://string-db.org | Main entry point to STRING
+http://string.embl.de | Alternative entry point to STRING
+http://stitch.embl.de | Entry point to STITCH
+
+In this file, we will use the STRING main entry point.
+
+```{r base_url}
+STRING_service_url <- "http://string-db.org"
+```
+
+
+### [access]
+
+Two types of access are provided, either "api" for the API, or "services" for other kind of services. (Which ones?)
+
+In this file, we will focus on the API.
+
+```{r access}
+STRING_access <- "api"
+```
+
+
+### [format]
+
+STRING provides either simple "table-like" tab-separated formats (TSV, TSV without headers or PSI-MI-TAB) as well as more complex formats like JSON or XML (PSI-MI format).
+
+Format | Description
+--- | ---
+json | JSON format either as a list of hashes/dictionaries, or as a plain list (if there is only one value to be returned per record)
+tsv | Tab separated values, with a header line
+tsv-no-header | Tab separated values, without header line
+psi-mi | The interaction network in PSI-MI 2.5 XML format
+psi-mi-tab | Tab-delimited form of PSI-MI (similar to tsv, modeled after the IntAct specification. (Easier to parse, but contains less information than the XML format.)
+
+
+To read the returned information, base R functions can be used directly. On the other hand, JSON data can be read using the RJSONIO R package, while the XML package is used for XML data.
+
+RJSONIO: https://cran.r-project.org/web/packages/RJSONIO/index.html  
+XML: https://cran.r-project.org/web/packages/XML/index.html  
+
+
+```{r install_libraries, eval=FALSE}
+# Not run
+
+# If we want to access the information in JSON format
+install.packages("RJSONIO")
+# If we want to access the information in XML format (PSI-MI)
+install.packages("XML")
+```
+
+```{r load_libraries}
+library(RJSONIO)
+library(XML)
+```
+
+
+### [request] and associated [parameter]=[value]
+
+The [request] element of the URL is the type of request that needs to be performed on STRING data. For a given type of request, STRING provides two request names depending on if it's a request on one "identifier" (<requestname>) or on a list of "identifiers" (<requestname>List).
+
+#### resolve / resolveList (ID matching)
+
+Goal: match requested identifier(s) to STRING species. Be extremely careful as it matches not only on preferred names but also on the full annotation of each STRING entry.
+
+
+Format: One of "json", "tsv" or "tsv-no-header". The same content is returned whatever the chosen format.
+
+
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers (symbol or synonym or UniProt or ?)
+format | One of "full" or "only-ids".
+species | Either "auto-detect" or a taxonomic ID.
+
+
+* Example of a request to "resolve" with one identifier (JSON).
+Be aware that one should use "identifier" to provide one ID.
+
+```{r resolve_ex1}
+STRING_format <- "json"
+STRING_request <- "resolve"
+parameters <- list(identifier="Lat", #9606.ENSP00000378845
+                   format="full",
+                   species="9606")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+json_result <- fromJSON(result)
+json_result <- data.frame(sapply(json_result, simplify = TRUE,
+                      FUN=function(x) {
+                          return(x[c("queryIndex", "stringId", "preferredName", "ncbiTaxonId", "taxonName", "annotation")])
+                    }))
+
+# Display result
+print(json_result[1:5,])
+```
+
+* Example of a request to "resolveList" with a list of multiple identifier (TSV).  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r resolve_ex2}
+STRING_format <- "tsv"
+STRING_request <- "resolveList"
+parameters <- list(identifiers=c("Lat", "Lck", "P07766"), # 9606.ENSP00000378845, 9606.ENSP00000337825
+                   format="full",
+                   species="9606")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+
+# Display result
+print(tsv_result[, 1:5])
+```
+
+
+
+#### abstracts / abstractsList
+
+Goal: list abstracts matching requested identifier(s).
+
+
+Format: One of "json", "tsv" or "tsv-no-header". The same content is returned whatever the chosen format.
+
+
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers (symbol or synonym?)
+format | One of "colon" or "pmids".
+limit | Integer. Maximun number of returned abstracts.
+
+* Example of a request to "abstracts" with one identifier (JSON).
+Be aware that one should use "identifier" to provide one ID.
+
+```{r abstracts_ex1}
+STRING_format <- "json"
+STRING_request <- "abstracts"
+parameters <- list(identifier="9606.ENSP00000378845", #Lat
+                   format="colon", # "pmids" returns nothing?? Other format: remove completely parameter "format"
+                   limit="5")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+json_result <- fromJSON(result)
+
+# Display result
+print(json_result)
+```
+
+* Example of a request to "abstractsList" with a list of multiple identifier (TSV).  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r abstracts_ex2}
+STRING_format <- "tsv"
+STRING_request <- "abstractsList"
+parameters <- list(identifiers=c("Lat", "Lck", "P07766"),
+                   # "format" can be completely omitted
+                   limit="5")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+
+# Display result
+print(tsv_result)
+```
+
+
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
