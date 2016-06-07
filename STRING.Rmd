@@ -1,13 +1,12 @@
 ---
 title: "STRING"
 author: "Celine Hernandez"
-date: "6 Jun 2016"
+date: "7 Jun 2016"
 output: 
   html_document: 
     toc: yes
 ---
 
-http://www.bioconductor.org/packages/3.3/bioc/vignettes/STRINGdb/inst/doc/STRINGdb.pdf
 
 # Introduction
 
@@ -16,9 +15,9 @@ The STRING database is available at http://string-db.org
 Description from the STRING website:
 > STRING is a database of known and predicted protein-protein interactions. The interactions include direct (physical) and indirect (functional) associations; they stem from computational prediction, from knowledge transfer between organisms, and from interactions aggregated from other (primary) databases.
 
-Remote access to the database can be achieved by either direct request to the API or by using the STRINGdb R library.
-
-
+Remote access to the database can be achieved by either direct request to the STRING API or by using the STRINGdb R library. Requests sent to the STRING website are relatively fast compared to other ressources.
+  
+  
 # STRING API
 
 ## Access using R
@@ -43,7 +42,7 @@ library('RCurl')
 To use RCurl more easily, we can define a generic function requesting a provided URL given a list() of parameters and returning the service's response.
 
 ```{r rcurl_request}
-rcurl_request <- function(service_url, access, format, request, parameters) {
+make_url <- function(service_url, access, format, request, parameters) {
     
     # Collapse all parameters into one string
     all_parameters <- paste(
@@ -60,6 +59,15 @@ rcurl_request <- function(service_url, access, format, request, parameters) {
     # Encode URL (in case there would be any space character for instance)
     requested_url <- URLencode(requested_url)
     
+    # Return
+    return(requested_url)
+}
+
+rcurl_request <- function(service_url, access, format, request, parameters) {
+    
+    # Make URL from parameters
+    requested_url <- make_url(service_url, access, format, request, parameters)
+    
     # Start request to service
     response <- getURL(requested_url, .opts = list(ssl.verifypeer = FALSE))
     
@@ -71,11 +79,12 @@ rcurl_request <- function(service_url, access, format, request, parameters) {
 
 STRING API requests are based on a global synthax for the URL.
 
-> http://[database]/[access]/[format]/[request]?[parameter]=[value]
-
+> **http://[database]/[access]/[format]/[request]?[parameter]=[value]**
+  
 See this image for the full detail of all combinations : http://string-db.org/help/images/api_format.png
-
-### [database]
+  
+  
+## [database]
 
 The STRING API provides two entry points (base URLs) to STRING as well as one access to another sister database called STITCH (chemical-protein interactions).
 
@@ -92,7 +101,7 @@ STRING_service_url <- "http://string-db.org"
 ```
 
 
-### [access]
+## [access]
 
 Two types of access are provided, either "api" for the API, or "services" for other kind of services. (Which ones?)
 
@@ -103,7 +112,7 @@ STRING_access <- "api"
 ```
 
 
-### [format]
+## [format]
 
 STRING provides either simple "table-like" tab-separated formats (TSV, TSV without headers or PSI-MI-TAB) as well as more complex formats like JSON or XML (PSI-MI format).
 
@@ -135,28 +144,33 @@ install.packages("XML")
 library(RJSONIO)
 library(XML)
 ```
-
-
-### [request] and associated [parameter]=[value]
+  
+  
+## [request] and associated [parameter]=[value]
 
 The [request] element of the URL is the type of request that needs to be performed on STRING data. For a given type of request, STRING provides two request names depending on if it's a request on one "identifier" (<requestname>) or on a list of "identifiers" (<requestname>List).
 
-#### resolve / resolveList (ID matching)
+Remarks and notes:  
+
+* As far as possible, provide STRING IDs as identifiers. When not providing STRING IDs, STRING's conversion can add supplementary nodes that should not be included without careful review.
+* When asking for an ID conversion, always provide the taxon ID of the species.
+* Be aware of potentially conflicting parameters like "limit" and for "additional_network_nodes".
+
+
+### resolve / resolveList (ID matching)
 
 Goal: match requested identifier(s) to STRING species. Be extremely careful as it matches not only on preferred names but also on the full annotation of each STRING entry.
-
-
+  
 Format: One of "json", "tsv" or "tsv-no-header". The same content is returned whatever the chosen format.
 
-
-Allowed parameters | Description
+Allowed parameters | Description 
 --- | ---
-identifier/identifiers | One or multiple identifiers (symbol or synonym or UniProt or ?)
+identifier/identifiers | One or multiple identifiers (symbol or synonym or UniProt or ?).
 format | One of "full" or "only-ids".
 species | Either "auto-detect" or a taxonomic ID.
 
-
-* Example of a request to "resolve" with one identifier (JSON).
+  
+* Example of a request to "resolve" with one identifier  
 Be aware that one should use "identifier" to provide one ID.
 
 ```{r resolve_ex1}
@@ -178,15 +192,16 @@ json_result <- data.frame(sapply(json_result, simplify = TRUE,
 
 # Display result
 print(json_result[1:5,])
+
 ```
 
-* Example of a request to "resolveList" with a list of multiple identifier (TSV).  
+* Example of a request to "resolveList" with a list of multiple identifier  
 Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
 
 ```{r resolve_ex2}
 STRING_format <- "tsv"
 STRING_request <- "resolveList"
-parameters <- list(identifiers=c("Lat", "Lck", "P07766"), # 9606.ENSP00000378845, 9606.ENSP00000337825
+parameters <- list(identifiers=c("Lat", "Lck", "P07766"), # "9606.ENSP00000378845", "9606.ENSP00000337825", "9606.ENSP00000354566" (aka CD3E)
                    format="full",
                    species="9606")
 
@@ -203,7 +218,7 @@ print(tsv_result[, 1:5])
 
 
 
-#### abstracts / abstractsList
+### abstracts / abstractsList
 
 Goal: list abstracts matching requested identifier(s).
 
@@ -214,17 +229,17 @@ Format: One of "json", "tsv" or "tsv-no-header". The same content is returned wh
 Allowed parameters | Description
 --- | ---
 identifier/identifiers | One or multiple identifiers (symbol or synonym?)
-format | One of "colon" or "pmids".
-limit | Integer. Maximun number of returned abstracts.
+format | One of "colon" or "pmids". Can also be omitted. Note that "pmids" seems to be not working (empty result).
+limit | Integer. Maximum number of returned abstracts. Default to 10.
 
-* Example of a request to "abstracts" with one identifier (JSON).
+* Example of a request to "abstracts" with one identifier  
 Be aware that one should use "identifier" to provide one ID.
 
 ```{r abstracts_ex1}
 STRING_format <- "json"
 STRING_request <- "abstracts"
 parameters <- list(identifier="9606.ENSP00000378845", #Lat
-                   format="colon", # "pmids" returns nothing?? Other format: remove completely parameter "format"
+                   format="colon",
                    limit="5")
 
 # Perform request
@@ -237,13 +252,13 @@ json_result <- fromJSON(result)
 print(json_result)
 ```
 
-* Example of a request to "abstractsList" with a list of multiple identifier (TSV).  
+* Example of a request to "abstractsList" with a list of multiple identifier  
 Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
 
 ```{r abstracts_ex2}
 STRING_format <- "tsv"
 STRING_request <- "abstractsList"
-parameters <- list(identifiers=c("Lat", "Lck", "P07766"),
+parameters <- list(identifiers=c("Lat", "Lck", "P07766"), #  "9606.ENSP00000378845", "9606.ENSP00000337825", "9606.ENSP00000354566" (aka CD3E)
                    # "format" can be completely omitted
                    limit="5")
 
@@ -258,6 +273,284 @@ tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFact
 print(tsv_result)
 ```
 
+
+### actions / actionsList
+  
+Goal: find action partners and return all known modes of action between provided identifier(s) and these partners.
+  
+Format: One of "tsv" or "tsv-no-header". 
+  
+  
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers. Note that they will be converted and that **only their STRING IDs will be reported** in the returned table.
+limit | Integer. Maximum number of nodes in the resulting table (more than the provided identifier(s)).
+required_score | Integer, between 0 and 1000. Minimal significance for an interaction to be included. Note that as soon as an interaction passes the threshold, STRING will return all the information on this interaction (multiple lines for one interaction), even if the score is less than the threshold.
+additional_network_nodes | Integer. Maximal number of nodes to be added (from the score-sorted list).
+species | A taxonomic ID limiting returned elements if identifiers need to be converted.
+
+  
+Note: there seems to be a conflict between "limit" and "additional_network_nodes". If both are provided they seem to add up. My suggestion is to always set one of the two to 0 ("limit" for instance) and set the other to the desired value.
+  
+  
+* Example of a request to "actions" with one identifier  
+Be aware that one should use "identifier" to provide one ID.
+
+```{r actions_ex1}
+STRING_format <- "tsv"
+STRING_request <- "actions"
+parameters <- list(identifier="9606.ENSP00000378845", #Lat
+                   limit="0",
+                   required_score="500",
+                   additional_network_nodes="1")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+# Display result
+print(tsv_result)
+```
+  
+  
+* Example of a request to "actionsList" with a list of multiple identifier  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r actions_ex2}
+STRING_format <- "tsv"
+STRING_request <- "actionsList"
+parameters <- list(identifiers=c("Lat", "SOS1", "P07766"), #  "9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566" (aka CD3E)
+                   limit="0",
+                   required_score="500",
+                   additional_network_nodes="0",
+                   species="9606")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+
+# Display result
+print(tsv_result)
+
+```
+
+Notes concerning the last example
+
+* 6 new nodes were added even if we explicitely set additional_network_nodes to 0! This is probably due to the conversion to STRING IDs. Note that it's even worse when no taxon ID is specified.
+* The table contains interactions with scores below the "required_score". As soon as an interaction passes the threshold, STRING will return all the information it contains on this interaction (multiple lines for one interaction), even if the score is less than the threshold.
+
+
+### interactors / interactorsList (list of names)
+
+
+Goal: find interactors and return their names.
+  
+Format: One of "tsv" or "tsv-no-header". PSI formats are supposed to be accepted too but are not recognized in reality.
+  
+  
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers. Note that they will be converted and that **only their STRING IDs will be reported** in the returned table.
+limit | Integer. Maximum number of nodes in the resulting table (more than the provided identifier(s)).
+required_score | Integer, between 0 and 1000. Minimal significance for an interaction to be included. Note that this parameter is used even if it's not displayed in the returned table.
+additional_network_nodes | Integer. Maximal number of nodes to be added (from the score-sorted list).
+species | A taxonomic ID limiting returned elements if identifiers need to be converted.
+
+  
+Note: there seems to be a conflict between "limit" and "additional_network_nodes". If both are provided they seem to add up. My suggestion is to always set one of the two to 0 ("limit" for instance) and set the other to the desired value.
+  
+  
+* Example of a request to "interactors" with one identifier  
+Be aware that one should use "identifier" to provide one ID.
+
+```{r interactors_ex1}
+STRING_format <- "tsv"
+STRING_request <- "interactors"
+parameters <- list(identifier="9606.ENSP00000378845", #Lat
+                   limit="0",
+                   required_score="900",
+                   additional_network_nodes="10")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+# Display result
+print(tsv_result)
+```
+  
+  
+* Example of a request to "interactorsList" with a list of multiple identifier  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r interactors_ex2}
+STRING_format <- "tsv"
+STRING_request <- "interactorsList"
+parameters <- list(identifiers=c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566"), # (aka CD3E)  # c("Lat", "SOS1", "P07766"), 
+                   limit="0",
+                   required_score="500",
+                   additional_network_nodes="5",
+                   species="9606")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+# Display result
+print(tsv_result)
+```
+
+
+
+### interactions / interactionsList (2-identifiers interactions)
+
+
+Goal: find interaction partners and corresponding scores. This information is also accessible through PSICQUIC.
+  
+Format: Both PSI-MI 2.5 XML and tabular formats are available ("psi-mi" and "psi-mi-tab"). More information is returned in the PSI-MI XML compared to the PSI-MI Tab. The PSI-MI Tab provides the STRING IDs, the gene symbols, taxon IDs and scores. It has no header describing the columns.
+  
+  
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers. Non-STRING IDs will be converted.
+limit | Integer. Maximun number of nodes in the resulting table (more than the provided identifier(s)).
+required_score | Integer, between 0 and 1000. Minimal significance for an interaction to be included.
+additional_network_nodes | Integer. Maximal number of nodes to be added (from the score-sorted list).
+species | A taxonomic ID limiting returned elements if identifiers need to be converted.
+
+  
+Note: there seems to be a conflict between "limit" and "additional_network_nodes". If both are provided they seem to add up. My suggestion is to always set one of the two to 0 ("limit" for instance) and set the other to the desired value.
+  
+  
+* Example of a request to "interactions" with one identifier  
+Be aware that one should use "identifier" to provide one ID.
+
+```{r interactions_ex1}
+STRING_format <- "psi-mi"
+STRING_request <- "interactions"
+parameters <- list(identifier="9606.ENSP00000354566", #CD3E
+                   limit="0",
+                   required_score="900",
+                   additional_network_nodes="1")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+xml_result <- xmlParse(file = result, asText = TRUE)
+
+# Display result
+print(xml_result)
+```
+  
+  
+* Example of a request to "interactionsList" with a list of multiple identifier  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r interactions_ex2}
+STRING_format <- "psi-mi-tab"
+STRING_request <- "interactionsList"
+parameters <- list(identifiers=c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566"), # (aka CD3E)  # c("Lat", "SOS1", "P07766"), 
+                   limit="0",
+                   required_score="500",
+                   additional_network_nodes="0",
+                   species="9606")
+
+# Perform request
+result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+
+# Parse result
+tsv_result <- read.table(text = result, header = FALSE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
+
+# Display result
+print(tsv_result)
+```
+
+
+
+### network / networkList (images)
+
+Goal: create images representing interaction networks.
+  
+Format: "image"
+  
+  
+Allowed parameters | Description
+--- | ---
+identifier/identifiers | One or multiple identifiers. Non-STRING IDs will be converted.
+limit | Integer. Maximun number of nodes in the resulting table (more than the provided identifier(s)).
+required_score | Integer, between 0 and 1000. Minimal significance for an interaction to be included. 
+additional_network_nodes | Integer. Maximal number of nodes to be added (from the score-sorted list).
+species | A taxonomic ID limiting returned elements if identifiers need to be converted.
+network_flavor | Type of interactions to display in the image. For STRING, one of "evidence" or "confidence". For STITCH, "actions".
+
+  
+Note: there seems to be a conflict between "limit" and "additional_network_nodes". If both are provided they seem to add up. My suggestion is to always set one of the two to 0 ("limit" for instance) and set the other to the desired value.
+  
+  
+* Example of a request to "network" with one identifier
+Be aware that one should use "identifier" to provide one ID.
+
+```{r network_ex1}
+STRING_format <- "image"
+STRING_request <- "network"
+parameters <- list(identifier="9606.ENSP00000354566", #CD3E
+                   limit="0",
+                   required_score="900",
+                   network_flavor="evidence",
+                   additional_network_nodes="1")
+
+# Perform request
+url_request <- make_url(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+download.file(url_request, "network_ex1.png", mode="wb")
+
+# Display image
+knitr::include_graphics("./network_ex1.png")
+```
+  
+  
+* Example of a request to "networkList" with a list of multiple identifier  
+Be aware that one should use "identifiers" and not "identifier" to provide the list of IDs.
+
+```{r network_ex2}
+STRING_format <- "image"
+STRING_request <- "networkList"
+parameters <- list(identifiers=c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566"), # c("Lat", "SOS1", "P07766"),  # (aka CD3E) 
+                   limit="0",
+                   required_score="500",
+                   additional_network_nodes="0",
+                   species="9606")
+
+# Perform request
+url_request <- make_url(STRING_service_url, STRING_access, STRING_format, STRING_request, parameters)
+download.file(url_request, "network_ex2.png", mode="wb")
+
+# Display image
+knitr::include_graphics("./network_ex2.png")
+```
+
+
+
+
+# STRINGdb (R package)
+
+## Access using R
+
+http://www.bioconductor.org/packages/3.3/bioc/vignettes/STRINGdb/inst/doc/STRINGdb.pdf
+
+
+```{r install, eval=FALSE}
+install.packages("STRINGdb")
+```
 
 
 # Session info
