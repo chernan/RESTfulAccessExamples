@@ -15,8 +15,9 @@ The STRING database is available at http://string-db.org
 Description from the STRING website:
 > STRING is a database of known and predicted protein-protein interactions. The interactions include direct (physical) and indirect (functional) associations; they stem from computational prediction, from knowledge transfer between organisms, and from interactions aggregated from other (primary) databases.
 
-Remote access to the database can be achieved by either direct request to the STRING API or by using the STRINGdb R library. Requests sent to the STRING website are relatively fast compared to other ressources.
-  
+The STRING graph contains undirected protein-protein interactions.
+
+Access to the database can be achieved by either remote request to the STRING API or by using the STRINGdb R library. 
   
 # STRING API
 
@@ -258,7 +259,7 @@ Be aware that one should use "identifiers" and not "identifier" to provide the l
 ```{r abstracts_ex2}
 STRING_format <- "tsv"
 STRING_request <- "abstractsList"
-parameters <- list(identifiers=c("Lat", "Lck", "P07766"), #  "9606.ENSP00000378845", "9606.ENSP00000337825", "9606.ENSP00000354566" (aka CD3E)
+parameters <- list(identifiers=c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566"), # "Lat", "Lck", "P07766" (aka CD3E)
                    # "format" can be completely omitted
                    limit="5")
 
@@ -267,7 +268,6 @@ result <- rcurl_request(STRING_service_url, STRING_access, STRING_format, STRING
 
 # Parse result
 tsv_result <- read.table(text = result, header = TRUE, quote = "", stringsAsFactors = FALSE, row.names = NULL, sep = "\t")
-
 
 # Display result
 print(tsv_result)
@@ -437,7 +437,7 @@ Be aware that one should use "identifier" to provide one ID.
 ```{r interactions_ex1}
 STRING_format <- "psi-mi"
 STRING_request <- "interactions"
-parameters <- list(identifier="9606.ENSP00000354566", #CD3E
+parameters <- list(identifier="9606.ENSP00000378845", #Lat
                    limit="0",
                    required_score="900",
                    additional_network_nodes="1")
@@ -536,20 +536,6 @@ download.file(url_request, "network_ex2.png", mode="wb")
 
 # Display image
 knitr::include_graphics("./network_ex2.png")
-```
-
-
-
-
-# STRINGdb (R package)
-
-## Access using R
-
-http://www.bioconductor.org/packages/3.3/bioc/vignettes/STRINGdb/inst/doc/STRINGdb.pdf
-
-
-```{r install, eval=FALSE}
-install.packages("STRINGdb")
 ```
 
 
