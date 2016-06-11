@@ -1,0 +1,526 @@
+---
+title: "STRING R STRINGdb"
+author: "Celine Hernandez"
+date: "11 Jun 2016"
+output: html_document
+---
+
+# Introduction
+
+The STRING database is available at http://string-db.org
+
+Description from the STRING website:
+> STRING is a database of known and predicted protein-protein interactions. The interactions include direct (physical) and indirect (functional) associations; they stem from computational prediction, from knowledge transfer between organisms, and from interactions aggregated from other (primary) databases.
+
+The STRING graph contains undirected protein-protein interactions.
+
+Access to the database can be achieved by either remote request to the STRING API or by using the STRINGdb R library. 
+
+
+# STRINGdb (R package)
+
+## Description of the package
+
+Besides the direct remote access to STRING using the API, the team also provides an R package to facilitate the interaction with the database. This R package downloads files from the STRING database in order to work locally. 
+
+http://www.bioconductor.org/packages/3.3/bioc/vignettes/STRINGdb/inst/doc/STRINGdb.pdf
+
+STRINGdb is available on the Bioconductor repository ( http://www.bioconductor.org/packages/release/bioc/html/STRINGdb.html ). To install the package, use biocLite().
+
+```{r install_stringdb, eval=FALSE}
+source("https://bioconductor.org/biocLite.R")
+biocLite("STRINGdb")
+```
+
+Then load the library.
+
+```{r load_stringdb}
+library(STRINGdb)
+```
+
+To get the list of all available functions:
+
+```{r list_functions_stringdb}
+STRINGdb$methods()
+```
+
+
+To get help on a specific function:
+
+```{r help_stringdb}
+STRINGdb$help("map")
+```
+
+
+## First step
+
+### Create a STRINGdb object
+
+The very first step to interrogate the STRING database is to create a STRINGdb object that will serve as a proxy for all requests. The object can be initialised with a set of parameters, but this is not mandatory. 
+
+Parameters | Description
+--- | ---
+version | Characters. Version of the database to interrogate.
+species | Numeric. Taxonomic identifier.
+score_threshold | Numeric value between 0 and 1. Threshold for interaction scores.
+input_directory | Characters. Temporary directory where STRING data will be downloaded.
+
+
+```{r create_stringdb}
+# Create a STRING object
+string_db <- STRINGdb$new(version="10", species=9606, score_threshold=900, input_directory=paste0(getwd(), "/stringdb_tempdir") )
+
+# Create the temp directory
+dir.create(path=paste0(getwd(), "/stringdb_tempdir"), showWarnings=FALSE)
+```
+
+Note: to access the complete list of available taxon in STRING, use the function get_STRING_species(). 
+
+Parameters | Description
+--- | ---
+"version" | If is not provided, the latest one will be used by default. 
+"species" | Either NULL (returns all species) or a substring of the desired species name (case sensitive!).
+
+
+```{r get_taxonomy, message=FALSE}
+get_STRING_species(version="10", species_name="Hom")
+```
+
+
+### Map to STRING identifiers
+
+The second step consists in mapping the current identifiers to STRING identifiers. This can be performed using the mp() or map() functions. 
+
+* mp()
+
+This function is useful when mapping only one identifier at a time.
+
+```{r map_one_id, message=FALSE}
+string_db$mp("LAT")
+```
+
+
+* map()
+
+This function expects a data frame ("my_data_frame") and the column name containing the identifiers ("my_data_frame_id_col_names"). "takeFirst", one of the other parameters allows to say if all matching identifiers should be returned of if the first one should be taken by default (compares to the STRING identifier's preferred name). The data.frame is modified and another column added containing the STRING identifiers.
+
+
+```{r map_identifiers, message=FALSE}
+# Real identifiers plus a dummy one
+identifiers <- data.frame(names=c("Lat", "SOS1", "P07766", "DUMMYGENE"))
+
+# Map gene/protein identifiers to STRING identifiers
+# Also displays the percentage of unmapped identifiers
+string_ids <- string_db$map(my_data_frame=identifiers, my_data_frame_id_col_names = "names", 
+                            takeFirst=TRUE, removeUnmappedRows=FALSE)
+print(string_ids)
+```
+
+
+## Exploring the STRING graph
+
+### Access the complete STRING graph 
+
+The full list of all nodes can be accessed using the function.
+
+```{r get_all_proteins, eval=FALSE}
+# Not run
+
+# Download the complete list of all proteins included in STRING
+string_proteins <- string_db$get_proteins()
+print(head(string_proteins, n=5))
+```
+
+
+The full STRING network can be downloaded and explored locally using the get_graph() function. Returned object is an igraph.
+
+```{r get_full_graph_stringdb, eval=FALSE}
+# Not run
+
+# Downloads the graph if not already available locally
+full_graph <- string_db$get_graph()
+print(full_graph)
+```
+
+Convert the STRING network of interactions into a Bioconductor graph. This process is slow and takes about 10 minutes to complete.
+
+```{r get_full_graph_bioc, eval=FALSE}
+full_bioc_graph <- string_db$get_bioc_graph()
+```
+
+
+### Find interactions among a set of proteins
+
+
+From a set of identifiers, one can access the interactions among these identifiers through the get_interactions() function.
+
+```{r get_interactions_stringdb}
+identifiers <- c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566") # "Lat", "SOS1", "P07766" (aka CD3E) 
+
+string_db$get_interactions( identifiers )
+```
+
+It's also possible to access the PUBMED IDs of articles mentionning two given identifiers...
+
+```{r}
+pubmed_ids <- string_db$get_pubmed_interaction( "9606.ENSP00000378845", "9606.ENSP00000384675" ) # "Lat", "SOS1"
+```
+
+...Or to provide multiple identifiers. But this last function provides much more results compared to get_pubmed_interaction(), probably because it returns PUBMED IDs corresponding to **at least** one identifier.
+
+```{r}
+identifiers <- c("9606.ENSP00000378845", "9606.ENSP00000384675") # "Lat", "SOS1"
+
+pubmed_ids <- string_db$get_pubmed( identifiers ) 
+length(pubmed_ids)
+```
+
+Note that it's also possible to access each article's information from PUBMED. Follows an example using the XML package, but it might be more convenient to use the wrappers available in the "annotate" R package.
+
+```{r}
+# 16906159 ?!
+pubmed_ids <- c("PMID:9091579", "PMID:24222714", "PMID:24205378", "PMID:24101378", "PMID:23308188", "PMID:23209318")
+
+# Start request to service
+response <- getURL(paste0("http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=", substring(pubmed_ids[[1]][2], first = 6), "&version=2.0&retmode=xml"), 
+                   .opts = list(ssl.verifypeer = FALSE))
+# Parse result
+library("XML")
+xml_result <- xmlParse(file = response, asText = TRUE)
+# Display result
+print(xmlValue(getNodeSet(xml_result, "/*//AbstractText")[[1]]))
+```
+
+
+### Find the neighbours of a set of proteins
+
+From a set of identifiers, find which are the direct neighbouring interactors outside of this set.
+
+```{r}
+identifiers <- c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566") # "Lat", "SOS1", "P07766" (aka CD3E) 
+
+string_db$get_neighbors( identifiers )
+
+```
+
+
+## Plot network
+
+
+### Plot partial network
+
+From a set of STRING identifiers, one can visualise interactions as thez would be displayed on the STRING website.
+
+```{r plot_network_stringdb}
+identifiers <- c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566") # "Lat", "SOS1", "P07766" (aka CD3E) 
+
+string_db$plot_network( identifiers )
+```
+
+A summary of the network is displayed at the top of the image (node and edges numbers). The p-value "represents the probability that you can expect such an equal or greater number of interactions by chance." (from the STRINGdb documentation) It can be removed using parameter "add_summary = FALSE".  
+
+The URL at the bottom of the image links to the visualisation of the same graph on the STRING website. It can be removed with parameter "add_link=FALSE".
+
+### Plot a partial network using igraph
+
+```{r}
+library(igraph)
+known_interactions <- string_db$get_interactions( c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566") )
+graph_interactions <- graph.data.frame(known_interactions, directed=FALSE)
+
+E(graph_interactions)$color<-ifelse(E(graph_interactions)$combined_score>400, "darkgreen", "grey")
+plot(graph_interactions,
+     layout=layout.fruchterman.reingold,
+     main='All interactions of DE genes',
+     vertex.frame.color='blue',
+     vertex.label.color='black',
+     vertex.label.font=2,
+     vertex.label=V(graph_interactions)$name,
+     vertex.label.cex=0.4)
+
+```
+
+### Colour a partial network
+
+The mechanism of colouring a network is called "payload mechanism". Nodes are not coloured inside but a halo is added around them.  
+
+```{r}
+full_list <- c("9606.ENSP00000378845", "9606.ENSP00000384675", "9606.ENSP00000354566", # "Lat", "SOS1", "P07766" (aka CD3E) 
+               "9606.ENSP00000339007", "9606.ENSP00000472929")  # GRB2, VAV1
+# A data frame containing identifiers and log2(fold change)
+ids_and_fold_change <- data.frame(ids=full_list[1:3], 
+                                  fold_change=c(-0.2, 1.2, -1.3))
+```
+
+This mechanism works in three steps:
+
+1. Add a new column to the data frame with the assigned colours. Use the add_diff_exp_color() function. Positive values of Log fold change (LFC) will be assigned a red colour, and negative values will receive a green colour. 
+
+
+```{r}
+# Add a new column to the data frame
+ids_fc_cols <- string_db$add_diff_exp_color( ids_and_fold_change[1:2], logFcColStr="fold_change" )
+
+print(ids_fc_cols)
+```
+
+2. Send the "payload" information (identifiers and colours) to the STRING server and receives a "ticket". Identifiers need to be STRING IDs.  
+
+```{r}
+# post payload information to the STRING server
+payload_id <- string_db$post_payload( ids_fc_cols$ids,
+                                      ids_fc_cols$color)
+```
+
+
+3. Access the graph visualisation using the "payload" ticket. Note that "required_score" has to be specified, even if "score_threshold" was already set in the STRINGdb object.
+
+```{r}
+# Display a STRING network with the "halo"
+string_db$plot_network(full_list, payload_id=payload_id,
+                       required_score=900)
+# Seems like under-expressed genes don't appear in green?
+```
+
+
+NB: colours can also be chosen, in case one wants to set his own scale instead of using add_diff_exp_color() function.
+
+```{r}
+# Send payload information to the STRING server
+payload_id <- string_db$post_payload( ids_fc_cols$ids, 
+                                      c("#FFFF0000", "#FF00FF00", "#FF0000FF") )
+# Display the STRING network with the "halo"
+string_db$plot_network(full_list, payload_id=payload_id,
+                       required_score=900)
+```
+
+NB2: To get the URL one can use the get_link() function, specifying the type of network as "evidence" (default), "confidence" or "actions".
+
+```{r}
+string_db$get_link(identifiers, required_score = 900, network_flavor = "evidence", payload_id =payload_id )
+```
+
+
+
+
+## Enrichment analysis
+
+```{r}
+# Create a STRING object
+string_db_enr <- STRINGdb$new(version="10", species=9606, score_threshold=700, input_directory=paste0(getwd(), "/stringdb_tempdir") )
+# Create the temp directory
+dir.create(path=paste0(getwd(), "/stringdb_tempdir"), showWarnings=FALSE)
+
+# For this example we will use the dataset provided with the STRINGdb package
+data(diff_exp_example1)
+head(diff_exp_example1, n=3)
+
+# First we find STRING identifiers with the map() function
+example1_mapped <- string_db_enr$map( diff_exp_example1, "gene", 
+                                  removeUnmappedRows=TRUE, takeFirst=TRUE )
+head(example1_mapped, n=3)
+```
+
+Set the background, defined as the full set of identified genes/proteins.
+
+```{r}
+# Provide the full list of identified genes as background
+string_db_enr$set_background(example1_mapped$STRING_id)
+```
+
+
+Plot enrichment in interactions along the sorted STRING IDs (here:by p-value). 
+
+```{r}
+string_db_enr$plot_ppi_enrichment(example1_mapped[example1_mapped$pvalue<0.05, "STRING_id"], quiet=TRUE)
+```
+
+
+Compute the actual enrichment in categories using a hypergeometric test. It's also possible to choose to include or excluse electronically-inferred annotations (IEA).
+
+Note that a new annotation file is downloaded into the temporary directory.
+
+```{r}
+# Compute the enrichment
+enrichment <- string_db_enr$get_enrichment( example1_mapped[example1_mapped$pvalue<0.05, "STRING_id"], 
+                                            category = "REACTOME", methodMT = "fdr", iea = FALSE)
+head(enrichment, n=5)
+```
+
+Categories can be from GO annotations ("Process", "Component", "Function"), pathways ("KEGG", "REACTOME", "BIOCARTA"), protein families ("Pfam") or domains ("InterPro"), as well as other types of categories ("Tissue" or "Disease", annotations from which origin??). 
+
+```{r}
+# Display a table presenting available annotation categories
+annotations_stringdb <- string_db_enr$get_annotations()
+head(annotations_stringdb)
+table(annotations_stringdb$category)
+```
+
+Note that IEA annotations are not present in all categories.
+
+```{r}
+table(annotations_stringdb[annotations_stringdb$type=="IEA", "category"])
+```
+
+Display enrichment heatmap, in order to compare easily two different enrichment results.
+
+```{r, fig.width=15, fig.height=15}
+best_genes <- example1_mapped[example1_mapped$pvalue<0.05, "STRING_id"]
+enr_heatmap <- string_db_enr$enrichment_heatmap(list( best_genes[1:100], best_genes[101:200]),
+                                   list("1:100","101:200"),
+                                   title="My Lists" )
+```
+
+
+## Clustering and network analysis
+
+Through the get_clusters() function, STRINGdb provides easy access to clustering algorithms available in the igraph R library ("fastgreedy", "walktrap", "spinglass", "edge.betweenness").
+
+```{r}
+# Select genes with best p-values
+best_genes <- example1_mapped[example1_mapped$pvalue<0.01, "STRING_id"]
+# Find clusters
+clusters_list <- string_db_enr$get_clusters(string_ids = best_genes, 
+                                          algorithm = "edge.betweenness")
+# How many clusters?
+length(clusters_list)
+# Display first cluster
+string_db_enr$plot_network(clusters_list[[3]])
+```
+
+## Homologs
+
+STRING also contains ALL-AGAINST-ALL blast alignments of its proteins. It is possible to access the best homolog of a certain gene into another species.
+
+```{r}
+# Get all homologs
+all_blast_hist <- string_db$get_homologs_besthits("9606.ENSP00000378845", symbets = TRUE)
+
+# Print homolog in Mus musculus (taxid:10090)
+print(all_blast_hist[all_blast_hist$species_id == 10090, ])
+```
+
+The target species can also be directly specified.
+
+```{r}
+string_db$get_homologs(c("9606.ENSP00000378845"), target_species_id=10090, bitscore_threshold=60 )
+```
+
+
+## Benchmarking protein-protein interactions
+
+STRINGdb provides functions to benchmark a protein-protein interaction graph against pathway databases (e.g KEGG).
+
+TODO: à détailler à fond!!!!!
+
+For this step, we will use a dataset provided by the package.
+
+```{r}
+# Load the dataset
+data(interactions_example)
+
+# Look at the content of the dataset
+nrow(interactions_example)
+head(interactions_example)
+tail(interactions_example)
+hist(interactions_example$score)
+```
+
+This protein-protein interaction network can now be benchmarked against known pathway databases. What the benchmark means is that for each interaction, the function will check whether the two proteins are present in at least one same pathway.
+
+Parameter | Description
+--- | ---
+interactions_dataframe | Interaction data frame (with the columns ”proteinA”, ”proteinB”, ”score”) sorted by decreasing score.
+pathwayType | Annotation category to be used for benchmarking. One of the pathway annotation, ie "KEGG", "REACTOME", "BIOCARTA".
+max_homology_bitscore | If not NULL, will be used to remove homologous interactions from the dataset.
+precision_window | A sliding window of X interactions that automatically expands/shrink at the beginning/end of the sorted interactions list.
+exclude_pathways  | A list of pathway names to be excluded. If it contains the name "blacklist", a subset of 80 pathways from the KEGG database will be automatically excluded.
+
+
+```{r}
+interactions_benchmark <- string_db$benchmark_ppi(
+    interactions_example, 
+    pathwayType = "REACTOME", 
+    max_homology_bitscore = 60, 
+    precision_window = 100, 
+    exclude_pathways = "blacklist")
+head(interactions_benchmark)
+```
+
+
+We can then plot the precision along the sorted interactions. "The precision is defined as the number of TP interactions (where the pair of proteins are both present together in at least one pathway) vs the total number of interactions in the window."
+
+```{r}
+plot(interactions_benchmark$precision, 
+     ylim=c(0,1), type="l", xlim=c(0,700), 
+     xlab="interactions", ylab="precision")
+abline(a=median(interactions_benchmark$precision), b=0)
+```
+
+Then, we can visualise the table of pathways found during the benchmark, and see which were the best represented.
+
+```{r}
+interactions_pathway_view <- string_db$benchmark_ppi_pathway_view(
+    interactions_benchmark, 
+    precision_threshold = median(interactions_benchmark$precision), 
+    pathwayType = "REACTOME")
+head(interactions_pathway_view)
+```
+
+
+**Supplementary information**
+
+Blacklisted pathways from the KEGG ressource.
+
+```{r kegg_blacklist}
+path_blacklists <- string_db$get_pathways_benchmarking_blackList()
+print(path_blacklists$term_description)
+```
+
+Annotations available
+
+```{r}
+# Display a table presenting available annotation categories, and their format
+annotations_stringdb <- string_db$get_annotations()
+head(annotations_stringdb)
+table(annotations_stringdb$category)
+```
+
+Note that the benchmark can remove homologous interactions from the dataset, but the same function is also available for users.
+
+```{r, eval=FALSE}
+interactions_example_woHomologs <- string_db$remove_homologous_interactions(interactions_example)
+nrow(interactions_example_woHomologs)
+hist(interactions_example_woHomologs$score)
+```
+
+
+---
+
+```{r}
+# use case?
+annotations_desc <- string_db$get_annotations_desc()
+head(annotations_desc)
+```
+
+## Other functions
+
+STRINGdb::{get_png}
+STRINGdb::{get_ppi_enrichment}
+STRINGdb::{get_ppi_enrichment_full}
+STRINGdb::{get_subnetwork}
+STRINGdb::{get_summary}
+STRINGdb::{get_term_proteins}
+
+STRINGdb::{add_proteins_description}
+STRINGdb::{load}
+STRINGdb::{load_all}
+
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
+
