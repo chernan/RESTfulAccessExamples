@@ -178,11 +178,10 @@ length(pubmed_ids)
 Note that it's also possible to access each article's information from PUBMED. Follows an example using the XML package, but it might be more convenient to use the wrappers available in the "annotate" R package.
 
 ```{r}
-# 16906159 ?!
-pubmed_ids <- c("PMID:9091579", "PMID:24222714", "PMID:24205378", "PMID:24101378", "PMID:23308188", "PMID:23209318")
+pubmed_ids <- c("PMID:9091579", "PMID:24222714")
 
 # Start request to service
-response <- getURL(paste0("http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=", substring(pubmed_ids[[1]][2], first = 6), "&version=2.0&retmode=xml"), 
+response <- getURL(paste0("http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=", substring(pubmed_ids[1], first = 6), "&version=2.0&retmode=xml"), 
                    .opts = list(ssl.verifypeer = FALSE))
 # Parse result
 library("XML")
@@ -377,15 +376,24 @@ enr_heatmap <- string_db_enr$enrichment_heatmap(list( best_genes[1:100], best_ge
 Through the get_clusters() function, STRINGdb provides easy access to clustering algorithms available in the igraph R library ("fastgreedy", "walktrap", "spinglass", "edge.betweenness").
 
 ```{r}
+# Create a STRING object
+string_db <- STRINGdb$new(version="10", species=9606, score_threshold=500, input_directory=paste0(getwd(), "/stringdb_tempdir") )
+# Create the temp directory
+dir.create(path=paste0(getwd(), "/stringdb_tempdir"), showWarnings=FALSE)
+
+# For this example we will use the dataset provided with the STRINGdb package
+data(diff_exp_example1)
+example1_mapped <- string_db$map( diff_exp_example1, "gene", 
+                                  removeUnmappedRows=TRUE, takeFirst=TRUE )
+
 # Select genes with best p-values
 best_genes <- example1_mapped[example1_mapped$pvalue<0.01, "STRING_id"]
-# Find clusters
-clusters_list <- string_db_enr$get_clusters(string_ids = best_genes, 
-                                          algorithm = "edge.betweenness")
+# Find clusters. Note: pbs with "spinglass" and "edge.betweenness"?
+clusters_list <- string_db$get_clusters(string_ids = best_genes, algorithm = "fastgreedy")
 # How many clusters?
 length(clusters_list)
 # Display first cluster
-string_db_enr$plot_network(clusters_list[[3]])
+string_db$plot_network(clusters_list[[3]])
 ```
 
 ## Homologs
@@ -410,8 +418,6 @@ string_db$get_homologs(c("9606.ENSP00000378845"), target_species_id=10090, bitsc
 ## Benchmarking protein-protein interactions
 
 STRINGdb provides functions to benchmark a protein-protein interaction graph against pathway databases (e.g KEGG).
-
-TODO: à détailler à fond!!!!!
 
 For this step, we will use a dataset provided by the package.
 
